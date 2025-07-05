@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document</title>
+</head>
+<body>
+<script src="./eczn_sum.bundle.js"></script>
+<script>
+(async () => {
+  const embind = await Module();
+  const { ecznSumCpp, ecznSumCppSimd } = embind;
+  // 百万级浮点数组 f64arr
+  const length = 1_000_000;
+  const f64arr = new Float64Array(length); // 注意这段内存只有 js 能访问
+  for (let i = 0; i < length; i++) f64arr[i] = i + Math.random();
+
+  // js arr 求和
+  function ecznSumJs(arr) {
+    let sum = 0;
+    let len = arr.length;
+    for (let i = 0; i < len; i++) {
+      sum += arr[i];
+    }
+    return sum;
+  }
+
+  let now = Date.now()
+  for (let i = 0; i < 100; i ++) ecznSumJs(f64arr); // 亿级
+  document.writeln(`ecznSumJs = ${Date.now() - now}ms \n`);
+
+  // 分配一段内存
+  const f64ArrPointer = embind._malloc(length * /** f64 字长 */ 8);
+  embind.HEAPF64.set(f64arr, f64ArrPointer / 8);
+  now = Date.now()
+  for (let i = 0; i < 100; i ++) ecznSumCpp(f64ArrPointer, length); // 亿级
+  document.writeln(`ecznSumCpp1 = ${Date.now() - now}ms \n`);
+})()
+
+</script>  
+</body>
+</html>
