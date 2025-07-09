@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document</title>
+<style>
+.membenchmark {
+  font-family: menlo;
+  white-space: pre;
+}
+</style>
+</head>
+<body>
+<script src="./eczn_sum.bundle.js"></script>
+<script>
+function createF64Arr(length) {
+  const f64arr = new Float64Array(length); // 注意这段内存只有 js 能访问
+  for (let i = 0; i < length; i++) f64arr[i] = i + Math.random();
+  return f64arr;
+}
+
+const wait = (t = 100) => new Promise(r => setTimeout(r, t));
+
+class MemBenchmark {
+  bytesLength = 4;
+  $div = (() => {
+    const div = document.createElement('div');
+    div.className = "membenchmark";
+    return div;
+  })();
+  wasmModule;
+  async println(...texts) {
+    await wait(80);
+    this.$div.innerHTML += `<div>${texts.join(' ')}</div>`;
+  }
+  async printGray(text) {
+    await this.println(`<div style="opacity:.4;">${text}</div>`);
+  }
+  async printLine() {
+    await this.printGray(`===================================`);
+  }
+  async start() {
+    let start = 0;
+    start = Date.now();
+    const { bytesLength } = this;
+    document.body.appendChild(this.$div);
+    await this.println(`# 内存分配测试: bytesLength=${bytesLength}`);
+    await this.printLine();
+    await this.println(`URL 参数: ?bytesLength=${100}`);
+    await this.printLine();
+
+    for (const { tag, times } of [
+      { tag: '一千次', times: 1024 },
+      { tag: '一万次', times: 10240 },
+      { tag: '十万次', times: 102400 },
+      { tag: '百万次', times: 1024000 },
+      { tag: '千万次', times: 10240000 },
+      { tag: '一亿次', times: 102400000 },
+    ]) {
+      if (wasmModule.wasmMemory.buffer.byteLength + (times * bytesLength) >= 1024 * 1024 * 1024 * 3.5) {
+        const costStr = `     N/A`.slice(-5);
+        await this.println(`${tag}   _malloc 耗时: ${costStr} ms [超过 4G 内存/无数据]`);
+        continue;
+      }
+      const start = Date.now();
+      for (let i = 0; i < times; i++) {
+        let pointer = wasmModule._malloc(bytesLength);
+      }
+      const costStr = `     ${Date.now() - start}`.slice(-5)
+      await this.println(`${tag}   _malloc 耗时: ${costStr} ms`);
+    }
+
+    await this.printLine();
+    const memoryUsage = (wasmModule.wasmMemory.buffer.byteLength / 1024 / 1024).toFixed(2);
+    await this.println(`当前内存占用:     ${memoryUsage} MB`);
+
+    await this.printGray(`* 为了确保精准，请关闭 devtools 刷新后再试`);
+    await this.printGray(`* 不能分配超过 4G 内存, 所以超过的项不会执行`);
+  }
+}
+
+
+(async () => { // js 分配两个 4 字节，写入整数，并送给 wasm/cpp 进行运算
+  const wasmModule = await Module();
+  window.wasmModule = wasmModule;
+  // wasmModule.sumIntInt
+
+  const $a = wasmModule._malloc(4);
+  const $b = wasmModule._malloc(4);
+  
+  // 那么字符串呢 ?
+  wasmModule.HEAPU32[$a / 4 /** i32 需要除以 4，或者用 HEAPU8 */] = 114;
+  wasmModule.HEAPU32[$b / 4 /** i32 需要除以 4，或者用 HEAPU8 */] = 1;
+
+  const res = wasmModule.sumIntInt($a, $b);
+  console.log('a b: 指针数值', $a, $b);
+  console.log('*a + *b =', res);
+
+  const mb = new MemBenchmark();
+  mb.wasmModule = wasmModule;
+  mb.bytesLength = Number(new URLSearchParams(location.search).get(`bytesLength`)) || 100;
+  await mb.start();
+})();
+</script>  
+</body>
+</html>
